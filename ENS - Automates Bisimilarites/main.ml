@@ -73,12 +73,19 @@ let aut_get_fin_state (a : automate_t) : etat_fin_t = match a with
 	|(q, sigma, delta, i, f) -> f
 
 
-type mot_t = alphabet_t list
+let aut_affiche (a : automate_t) : unit = match a with
+	|(q, sigma, delta, i, f) ->
+		Printf.printf "Automate : q = %d, Sigma = %d : \n" q sigma;
+
+		Printf.printf "États Initiaux : "; List.iter (fun i -> Printf.printf "%d " i) i; 
+		Printf.printf "\nÉtats Terminaux : "; List.iter (fun i -> Printf.printf "%d " i) f; print_newline ();
+		
+		Array.iteri (fun i li -> List.iter (fun (l, n) -> Printf.printf "%d ->_%d %d" i l n) li; print_newline ()) delta
+
 
 
 let x (i : int) (j: int) (s: int) : int = 
 	(271 * (get_u i) + 293 * (get_u j) + 283 * (get_u s)) mod 10000
-
 
 let aut_gen_random (t : int) (n : int) (m : int) (d: int) : automate_t = 
 	let transitions = Array.make n [] in
@@ -157,6 +164,143 @@ let q_3 (t : int) (n : int) (m : int) (d : int) =
 	Printf.printf "   * Question 3 : A_%d(%d, %d, %d) contient %d états accessibles\n" t n m d (Array.fold_left (fun count b -> if (b) then (count + 1) else count) 0 access_tab)
 
 
+
+(*
+	
+	Les questions suivantes peuvent se traiter de plusieurs manières comme le suggère l'énoncé.
+	Cependant, une idée semblant ressortir de ces trois questions est "l'intersection d'automate" / automate produit : Nous pouvons
+	en effet répondre à ces trois questions en définissant rigoureusement un sous-automate (au sens de sous-graphe), commun
+	a deux voir plusieurs automates.
+
+*)
+
+(*
+
+	Le langage \phi est régulier, et reconnu par un automate que nous donnons ci-dessous (m = 10)
+
+*)
+
+let automate_phi_const : automate_t = 
+	(7, 10, 
+	[|[(0, 0); (1, 1); (2, 0); (3, 0); (4, 0); (5, 0); (6, 0); (7, 0); (8, 0); (9, 0)]; 
+	[(1, 2); (1, 3); (1, 4); (1, 5)]; 
+	(List.init 10 (fun i -> (i, 3))); 
+	(List.init 10 (fun i -> (i, 4))); 
+	(List.init 10 (fun i -> (i, 5)));  
+	[(2, 6)];
+	[]
+	|], [0], [6])
+
+
+let list_prod_fun (la : 'a list) (lb : 'b list) (f : 'a -> 'a -> 'b): 'b list =
+	let rec recursion a b = match (a, b) with
+		|(_ , []) -> []
+		|([], h::t) -> recursion la t
+		|(ha::ta, hb::tb) -> (f ha hb)::(recursion ta b)
+	in recursion la lb
+
+let aut_get_voisins (a: automate_t) (q : etat_t) (l : alphabet_t) : etat_t list = match a with
+	|(aq, sigma, delta, i, f) -> if(q >= aq || q < 0) then failwith "aut_get_voisins -> Cet état est inconnu!"
+	else let transition_list = delta.(q) in List.filter_map (fun (vl, n) -> if (vl <> l) then None else (Some n)) transition_list
+
+let aut_prod (a : automate_t) (b : automate_t) : automate_t = match (a, b) with
+	|((aq, asigma, adelta, ai, af), (bq, bsigma, bdelta, bi, bf)) ->
+		if(asigma <> bsigma) then failwith "aut_prod -> Les deux alphabets mis en jeu diffèrent!"
+		else begin 
+			let new_q = aq * bq in
+			let transition_tab = Array.make new_q [] in
+
+			let rec build_transitions a_ind b_ind letter = 
+				if(a_ind >= aq) then ()
+				else if(b_ind >= bq) then build_transitions (a_ind + 1) 0 0
+				else if(letter >= asigma) then build_transitions a_ind (b_ind + 1) 0
+				else begin 
+					let a_voisins = (aut_get_voisins a a_ind letter) in 
+					let b_voisins = (aut_get_voisins b b_ind letter) in
+
+					let rec build_transitions_prod_list la lb build_list = match (la, lb) with
+						|(_, []) -> transition_tab.(a_ind * bq + b_ind) <- (build_list @ transition_tab.(a_ind * bq + b_ind))
+						|([], h::t) -> build_transitions_prod_list a_voisins t build_list
+						|(ha::ta, hb::tb) -> build_transitions_prod_list ta lb ((letter, (ha * bq + hb))::build_list)
+
+					in build_transitions_prod_list a_voisins b_voisins []; build_transitions a_ind b_ind (letter + 1)
+				end
+			in build_transitions 0 0 0; 
+			(new_q, asigma, transition_tab, (list_prod_fun ai bi (fun a b -> a * bq + b)), (list_prod_fun af bf (fun a b -> a * bq + b)))
+		end
+
+
+let aut_is_language_empty (a : automate_t) : bool = match a with
+	|(q, sigma, delta, i, f) -> let g = aut_to_graph a in
+
+		let rec find_acceptant l accessibility_tab = match l with
+			|[] -> false
+			|ha::ta -> (accessibility_tab.(ha)) || (find_acceptant ta accessibility_tab) (* Évaluation parresseuse *)
+
+		in let rec iter_initial l = match l with
+			|[] -> false
+			|h::t -> let access_tab = graphe_etats_accessibles_from_i g h in (find_acceptant f access_tab) || (iter_initial t) 
+				
+	in not (iter_initial i) (* Not car afin de profiter de l'évaluation parresseuse, nous nous arrêtons lorsque vrai est trouvé, ce qui correspond à un langage non vide*)
+
+(* Question 4 *)
+
+let q_4 n d t = 
+
+	let rec build_t_list t_val =
+		if (t_val >= t+1) then []
+		else begin
+			let cur_automate = aut_gen_random t_val n 10 d in
+				if(not (aut_is_language_empty (aut_prod cur_automate automate_phi_const)))
+					then t_val::(build_t_list (t_val + 1)) else (build_t_list (t_val + 1))
+			end
+
+	in let rec find_min_card_list l = match l with
+		|[] -> (Int.max_int, 0)
+		|h::tail -> let m, s = (find_min_card_list tail) in if (h < m) then (h, s+1) else (m, s+1)
+		
+		
+	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
+	Printf.printf "   * Question 4 : Pour n = %d, d = %d, T = %d, Nous obtenons min = %d et Card = %d\n" n d t min size
+
+
+(* Question 5 *)
+
+let q_5 n d = 
+	let rec build_t_list t = 
+		if (t > 100) then []
+		else begin 
+			let aut_a = aut_gen_random t n 10 d in let aut_b = aut_gen_random (t+1) n 10 d in
+			if(not (aut_is_language_empty (aut_prod aut_a aut_b))) then t::(build_t_list (t+1)) else (build_t_list (t+1)) 
+		end
+
+	in let rec find_min_card_list l = match l with
+		|[] -> (Int.max_int, 0)
+		|h::tail -> let m, s = (find_min_card_list tail) in if (h < m) then (h, s+1) else (m, s+1)
+	
+	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
+	Printf.printf "   * Question 5 : Pour n = %d, d = %d, Nous obtenons min = %d et Card = %d\n" n d min size
+
+(* Question 6 *)
+let q_6 k = 
+
+	let rec build_aut t k_param = if (k_param <= 0) then aut_gen_random t 10 2 5
+	else (aut_prod (aut_gen_random t 10 2 5) (build_aut (t+1) (k_param-1)))
+
+	in let rec build_t_list t = 
+		if (t > 10) then []
+		else begin 
+			let aut = build_aut (5 * t) k in
+			if(not (aut_is_language_empty (aut))) then t::(build_t_list (t+1)) else (build_t_list (t+1)) 
+		end
+
+	in let rec find_min_card_list l = match l with
+		|[] -> (Int.max_int, 0)
+		|h::tail -> let m, s = (find_min_card_list tail) in if (h < m) then (h, s+1) else (m, s+1)
+	
+	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
+	Printf.printf "   * Question 6 : Pour k = %d, Nous obtenons min = %d et Card = %d\n" k min size
+
 let _ =
 	u_tab.(0) <- u_0;
 
@@ -165,3 +309,9 @@ let _ =
 	(* q_2 1 10 5 3; q_2 2 100 10 20; q_2 3 900 20 200; *) (* Ok avec u_0 = 1 *)
 
 	(*q_3 1 10 5 3; q_3 2 100 10 5; q_3 3 200 10 6; q_3 4 1000 25 5;*) (* Ok avec u_0 = 1 *)
+
+	q_4 10 5 15; q_4 50 5 100; q_4 75 7 100; q_4 200 10 100; (* QUASIMENT OK (les min sont bons, pas le bon compte sur les deux premiers) *)
+
+	(*q_5 20 10; q_5 50 10; q_5 150 8; q_5 500 12;*) (* Ok avec u_0 = 1, ATTENTION AU TEMPS D'EXECUTION!*)
+
+	(*q_6 3; q_6 4; q_6 5;*) (* Ok avec u_0 = 1*)
