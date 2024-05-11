@@ -168,9 +168,9 @@ let q_3 (t : int) (n : int) (m : int) (d : int) =
 (*
 	
 	Les questions suivantes peuvent se traiter de plusieurs manières comme le suggère l'énoncé.
-	Cependant, une idée semblant ressortir de ces trois questions est "l'intersection d'automate" / automate produit : Nous pouvons
-	en effet répondre à ces trois questions en définissant rigoureusement un sous-automate (au sens de sous-graphe), commun
-	a deux voir plusieurs automates.
+	Cependant, une idée semblant ressortir de ces trois questions est l'intersection de langages / automate produit : Nous pouvons
+	en effet répondre à ces trois questions en considérant qu'une trace appartient à un langage si et seulement si l'intersection
+	entre ce langage et le langage reconnu par l'automate est non vide.
 
 *)
 
@@ -181,15 +181,13 @@ let q_3 (t : int) (n : int) (m : int) (d : int) =
 *)
 
 let automate_phi_const : automate_t = 
-	(7, 10, 
-	[|[(0, 0); (1, 1); (2, 0); (3, 0); (4, 0); (5, 0); (6, 0); (7, 0); (8, 0); (9, 0)]; 
-	[(1, 2); (1, 3); (1, 4); (1, 5)]; 
+	(6, 10, 
+	[| [(0, 0); (1, 1); (1, 4); (2, 0); (3, 0); (4, 0); (5, 0); (6, 0); (7, 0); (8, 0); (9, 0)]; 
+	((List.init 10 (fun i -> (i, 2))) @ (List.init 10 (fun i -> (i, 3))) @ (List.init 10 (fun i -> (i, 4)))); 
 	(List.init 10 (fun i -> (i, 3))); 
 	(List.init 10 (fun i -> (i, 4))); 
-	(List.init 10 (fun i -> (i, 5)));  
-	[(2, 6)];
-	[]
-	|], [0], [6])
+	[(2, 5)];  
+	[]|], [0], [5])
 
 
 let list_prod_fun (la : 'a list) (lb : 'b list) (f : 'a -> 'a -> 'b): 'b list =
@@ -301,17 +299,201 @@ let q_6 k =
 	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
 	Printf.printf "   * Question 6 : Pour k = %d, Nous obtenons min = %d et Card = %d\n" k min size
 
+
+
+
+
+(* ------------------ PARTIE 2 ------------------------ *)
+
+
+(* On remarque une similitude avec l'équivalence de Nérode, servant à trouver un automate minimal *)
+
+type state_partition_t = etat_t list list
+
+let list_is_empty (l : 'a list) : bool = match l with |[] -> true |_ -> false 
+let rec list_contains (l : 'a list) (e : 'a) : bool = match l with
+	|[] -> false
+	|h::t -> (e = h) || (list_contains t e)
+
+let list_filter_out (l : 'a list) (filter : 'a list) : 'a list = 
+	if(list_is_empty filter) then l else	(* PLus rapide sur filtre vide *)
+	let rec recursion la = match la with
+		|[] -> []
+		|h::t -> if(list_contains filter h) then (recursion t) else h::(recursion t)
+	in recursion l
+
+let list_split_on (l : 'a list) (filter : 'a list) : ('a list * 'a list) = 
+	if(list_is_empty filter) then ([], l) else  (* PLus rapide sur filtre vide *)
+	let rec recursion la = match la with
+		|[] -> ([], [])
+		|h::t -> let inside, outside = (recursion t) in if (list_contains filter h) then ((h::inside), outside) else (inside, (h::outside))
+	in recursion l
+
+let aut_trivial_partition (a : automate_t) : state_partition_t = [(List.init (aut_get_states a) (fun i -> i))]
+let aut_basic_nerode_partition (a : automate_t) : state_partition_t = match a with
+	|(q, sigma, delta, i, f) -> [list_filter_out (List.init (aut_get_states a) (fun i -> i)) f; f]
+
+let aut_predecessor (a : automate_t) (state_list: etat_t list) (letter : alphabet_t) : etat_t list = match a with
+	|(q, sigma, delta, i, f) -> 
+		let rec build_predecessor_list state build_list = 
+			if(state >= q) then build_list 
+			else begin 
+				let voisins = aut_get_voisins a state letter in
+				let in_v, out_v = list_split_on voisins state_list in
+				if (not (list_is_empty in_v)) then build_predecessor_list (state + 1) (state::build_list)
+				else build_predecessor_list (state + 1) build_list
+			end
+		in build_predecessor_list 0 []
+
+
+let aut_algorithme_5 (a : automate_t) : state_partition_t = match a with
+	|(q, sigma, delta, i, f) ->
+		let base_partition = aut_basic_nerode_partition a in
+
+		let rec find_letter_class_to_split_on cur_class partition letter = match partition with
+			|[] -> ([], [])
+			|h::t -> begin if(letter >= sigma) then (find_letter_class_to_split_on cur_class t 0)
+				else begin 
+					let in_class, out_class = list_split_on cur_class (aut_predecessor a h letter) in
+					if( (not (list_is_empty in_class)) && (not (list_is_empty out_class)) ) then (in_class, out_class)
+					else find_letter_class_to_split_on cur_class partition (letter + 1) 
+				end
+			end
+
+
+		in let rec find_suitable_classes current_partition =
+			let rec iter_through_partitions cur_part previous_list = match cur_part with
+				|[] -> current_partition
+				|h::t -> let in_class, out_class = find_letter_class_to_split_on h current_partition 0 in
+				if(not (list_is_empty in_class)) then (find_suitable_classes (in_class::out_class::(previous_list @ t))) else (iter_through_partitions t (h::previous_list))
+			in iter_through_partitions current_partition [] 
+		in find_suitable_classes base_partition
+
+
+(* Question 7 *)
+
+let q_7 t n m d = 
+	Printf.printf "   * Question 7 : La partition de A_%d(%d, %d, %d) donne %d classes d'équivalence\n" t n m d (List.length (aut_algorithme_5 (aut_gen_random t n m d)))
+
+
+let rec list_insert_sans_doublon (l :'a list) (e : 'a) : 'a list = match l with
+	|[] -> [e]
+	|h::t -> if(h = e) then l else h::(list_insert_sans_doublon t e)
+
+let y (i : etat_t) (j : etat_t) (lettre: alphabet_t) = 41 * i + 31 * j + lettre
+
+
+let aut_gen_random_errone (t : int) (n : int) (m : int) (d : int) (p : int) =
+	let a_base = aut_gen_random t n m d in match a_base with
+		|(q, sigma, delta, i, f) -> 
+			let new_transitions = Array.make q [] in
+
+
+			(* Attention, il faut cette fois retirer les doublons éventuels !*)
+
+			let rec build_transitions cur_state delta_list new_list = match delta_list with
+				|[] -> new_transitions.(cur_state) <- new_list
+				|head::tail -> let letter, next = transition_identity head in 
+					if((get_u (5 * t + (y cur_state next letter))) mod p = 0) then 
+						build_transitions cur_state tail (list_insert_sans_doublon new_list (((get_u (5*t + (y cur_state next letter) + 100)) mod m), next))
+					else build_transitions cur_state tail (list_insert_sans_doublon new_list head)
+
+			in let rec iterate_state s = if (s >= q) then () else begin build_transitions s (delta.(s)) []; iterate_state (s+1) end
+			in iterate_state 0; (q, sigma, new_transitions, i, f) 
+
+(* Question 8 *)
+
+let q_8 (t : int) (n : int) (m : int) (d : int) (p : int) : unit = 
+	let rand_aut = aut_gen_random_errone t n m d p in
+	let trans_arr = aut_get_trans_arr rand_aut in
+
+	let rec count_transitions count_buf cur_state trans_list = match trans_list with
+		|[] -> if (cur_state >= n - 1) then count_buf else count_transitions count_buf (cur_state + 1) (trans_arr.(cur_state + 1))
+		|h::t -> count_transitions (count_buf + 1) cur_state t
+
+	in
+	Printf.printf "   * Question 8 : A^{err(%d)}_%d(%d, %d, %d) contient %d transitions\n" p t n m d (count_transitions 0 (-1) [])
+
+
+let aut_offset (a : automate_t) (s : int) : automate_t = match a with
+	|(q, sigma, delta, i, f) ->
+	let na = Array.init q (fun l -> (List.map (fun (letter, next) -> (letter, next + s)) (delta.(l)))) in
+		(q + s, sigma, na, (List.map (fun k -> k+s) i), (List.map (fun k -> k+s) i))
+
+let aut_union (a : automate_t) (b : automate_t) : automate_t = match (a,b) with
+	|((aq, asigma, adelta, ai, af), (bq, bsigma, bdelta, bi, bf)) ->
+		let new_b = aut_offset b aq in
+		(aq + bq, 
+		(max asigma bsigma), 
+		(Array.init (aq + bq) (fun i -> if (i < aq) then adelta.(i) else (aut_get_trans_arr new_b).(i - aq))),
+		 ai @ (aut_get_init_state new_b), 
+		 af @ (aut_get_fin_state new_b))
+
+
+(* Question 9 *)
+
+let q_9 (n : int) (m : int) (d : int) (p : int) : unit = 
+
+	let rec find_class_of (l : state_partition_t) (a : etat_t) : etat_t list = match l with
+		|[] -> failwith "find_class_of -> La partition ne contient pas l'état souhaité"
+		|h::t -> if(list_contains h a) then h else (find_class_of t a)
+
+	in let partition_same_class (l : state_partition_t) (a : etat_t) (b : etat_t) : bool = 
+		list_contains (find_class_of l a) b
+
+	in let rec build_t_list cur_t = 
+		if (cur_t > 100) then []
+		else begin
+			let rand_aut = aut_gen_random cur_t n m d in
+			let rand_aut_error = aut_gen_random_errone cur_t n m d p in
+			let union = aut_union rand_aut rand_aut_error in
+			let union_partition = aut_algorithme_5 union in
+			if(partition_same_class union_partition 0 (aut_get_states rand_aut)) (* Les automates considérés pour l'union ne possèdent qu'un unique état d'entrée par hypothèse *)
+				then cur_t::(build_t_list (cur_t + 1)) else build_t_list (cur_t + 1)
+			end
+	in let rec find_min_card_list l = match l with
+		|[] -> (Int.max_int, 0)
+		|h::tail -> let m, s = (find_min_card_list tail) in if (h < m) then (h, s+1) else (m, s+1)
+
+	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
+	Printf.printf "   * Question 9 : Pour p = %d, n = %d, m = %d, d = %d, Nous obtenons min = %d et Card = %d\n" p n m d min size
+
+
+
+
+(* ----------------------- PARTIE 3 ----------------------- *)
+
+(*
+
+	Reconnaître des inclusions de langages se fait assez facilement via des intersections. En notant U = L(A) et V = L(B),
+	nous avons U \subset V \iff (U \cap V) = U \iff (A \times B) \sim A
+
+
+*)
+
+
+let aut_lang_include (a : automate_t) (b : automate_t) : bool =
+	
+
+
 let _ =
 	u_tab.(0) <- u_0;
 
 	(* q_1 2; q_1 10; q_1 1000; q_1 11000; *)	(* Ok avec u_0 = 1 *)
 
-	(* q_2 1 10 5 3; q_2 2 100 10 20; q_2 3 900 20 200; *) (* Ok avec u_0 = 1 *)
+	(* q_2 1 10 5 3; q_2 2 100 10 20; q_2 3 900 20 200; *)  (* Ok avec u_0 = 1 *)
 
-	(*q_3 1 10 5 3; q_3 2 100 10 5; q_3 3 200 10 6; q_3 4 1000 25 5;*) (* Ok avec u_0 = 1 *)
+	(* q_3 1 10 5 3; q_3 2 100 10 5; q_3 3 200 10 6; q_3 4 1000 25 5;*) (* Ok avec u_0 = 1 *)
 
-	q_4 10 5 15; q_4 50 5 100; q_4 75 7 100; q_4 200 10 100; (* QUASIMENT OK (les min sont bons, pas le bon compte sur les deux premiers) *)
+	(* q_4 10 5 15; q_4 50 5 100; q_4 75 7 100; q_4 200 10 100;*) (* Ok avec u_0 = 1 *)
 
-	(*q_5 20 10; q_5 50 10; q_5 150 8; q_5 500 12;*) (* Ok avec u_0 = 1, ATTENTION AU TEMPS D'EXECUTION!*)
+	(* q_5 20 10; q_5 50 10; q_5 150 8; q_5 500 12;*) (* Ok avec u_0 = 1, ATTENTION AU TEMPS D'EXECUTION!*)
 
-	(*q_6 3; q_6 4; q_6 5;*) (* Ok avec u_0 = 1*)
+	(* q_6 3; q_6 4; q_6 5;*) (* Ok avec u_0 = 1*)
+
+	(* q_7 1 20 2 40; q_7 2 40 3 70; q_7 3 75 3 150; q_7 4 100 5 200;*) (* Ok avec u_0 = 1*)
+
+	(* q_8 1 10 2 50 25; q_8 2 20 2 100 50; q_8 3 25 2 100 50; q_8 4 30 2 100 50;*) (* Ok avec u_0 = 1*)
+	
+	(* q_9 10 2 50 25; q_9 20 2 100 50; q_9 25 2 100 50; q_9 30 2 100 50; *) (* PAS OK *)
+
