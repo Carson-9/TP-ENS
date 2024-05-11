@@ -464,17 +464,59 @@ let q_9 (n : int) (m : int) (d : int) (p : int) : unit =
 (* ----------------------- PARTIE 3 ----------------------- *)
 
 (*
-
 	Reconnaître des inclusions de langages se fait assez facilement via des intersections. En notant U = L(A) et V = L(B),
-	nous avons U \subset V \iff (U \cap V^c) = 0
-
-
+	nous avons U \subset V \iff (U \cap V^c) = \emptyset. V^c se reconnait facilement en inversant les états de sortie
+		Attention néanmoins, il faut que B soit complet!
 *)
 
 
-let aut_lang_include (a : automate_t) (b : automate_t) : bool =
-	
+let aut_invert (a : automate_t) : automate_t = match a with	
+	|(q, sigma, delta, i, f) ->
+		let base_list = List.init q (fun i -> i) in
+		(q, sigma, delta, i, (list_filter_out base_list f))
 
+
+let aut_complete (a : automate_t) : automate_t = match a with
+	|(q, sigma, delta, i, f) ->
+		let new_arr = Array.init (q+1) (fun i -> if (i < q) then delta.(i) else (List.init sigma (fun l -> (l, q)))) in
+		
+		let base_letter_list = List.init sigma (fun i -> i) in
+		
+		let rec add_bot_transitions cur_state =
+			if (cur_state >= q+1) then () else begin
+			let rec find_cur_transitions_letter_list tr_list build_list = match tr_list with
+				|[] -> build_list
+				|h::t -> let new_letter = (transition_get_letter h) in find_cur_transitions_letter_list t (list_insert_sans_doublon build_list new_letter)
+			in let rec add_bot_transitions_state letter_list = match letter_list with
+				|[] ->()
+				|h::t -> new_arr.(cur_state) <- (h, q)::(new_arr.(cur_state))
+			in add_bot_transitions_state (list_filter_out base_letter_list (find_cur_transitions_letter_list (new_arr.(cur_state)) []));
+				add_bot_transitions (cur_state + 1)
+		end
+		in add_bot_transitions 0;
+		(q+1, sigma, new_arr, i, f)
+
+let aut_is_language_included (a : automate_t) (b : automate_t) : bool =
+	let n_aut = aut_prod a (aut_invert b) in (* Il faut déterminiser et compléter b (en émondant) pour en donner l'inverse!*)
+	aut_is_language_empty n_aut
+
+
+(* Question 10*)
+let q_10 n d d_prime = 
+
+	let rec build_t_list t = 
+		if (t > 50) then []
+		else begin
+			if(aut_is_language_included (aut_gen_random (2 * t) n 2 d) (aut_gen_random (2 * t + 1) n 2 d_prime) )
+				then (t::(build_t_list (t+1))) 
+				else build_t_list (t+1)
+		end
+	in let rec find_min_card_list l = match l with
+		|[] -> (Int.max_int, 0)
+		|h::tail -> let m, s = (find_min_card_list tail) in if (h < m) then (h, s+1) else (m, s+1)
+
+	in let t_list = build_t_list 1 in let min, size = find_min_card_list t_list in
+	Printf.printf "   * Question 10 : Pour n = %d, d = %d, d' = %d, Nous obtenons min = %d et Card = %d\n" n d d_prime min size
 
 let _ =
 	u_tab.(0) <- u_0;
@@ -495,5 +537,8 @@ let _ =
 
 	(* q_8 1 10 2 50 25; q_8 2 20 2 100 50; q_8 3 25 2 100 50; q_8 4 30 2 100 50;*) (* Ok avec u_0 = 1*)
 	
-	(* q_9 10 2 50 25; q_9 20 2 100 50; q_9 25 2 100 50; q_9 30 2 100 50; *) (* PAS OK *)
+	(* q_9 10 2 50 25; q_9 20 2 100 50; q_9 25 2 100 50; q_9 30 2 100 50; *)  (* Ok avec u_0 = 1 Attention au temps d'exécution *)
 
+	(* q_10 10 3 8; q_10 15 5 10; q_10 60 5 10; q_10 90 10 15; *) (* Il faut déterminiser et émonder les automates ... flemme*)
+	
+	(* Q 11 : Se sert de Q 10, on vérifie A \subset B et B \subset A, puis s'ils sont bisimilaires *)
