@@ -418,7 +418,7 @@ let q_8 (t : int) (n : int) (m : int) (d : int) (p : int) : unit =
 let aut_offset (a : automate_t) (s : int) : automate_t = match a with
 	|(q, sigma, delta, i, f) ->
 	let na = Array.init q (fun l -> (List.map (fun (letter, next) -> (letter, next + s)) (delta.(l)))) in
-		(q + s, sigma, na, (List.map (fun k -> k+s) i), (List.map (fun k -> k+s) i))
+		(q + s, sigma, na, (List.map (fun k -> k+s) i), (List.map (fun k -> k+s) f))
 
 let aut_union (a : automate_t) (b : automate_t) : automate_t = match (a,b) with
 	|((aq, asigma, adelta, ai, af), (bq, bsigma, bdelta, bi, bf)) ->
