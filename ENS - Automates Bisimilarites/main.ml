@@ -466,7 +466,7 @@ let q_9 (n : int) (m : int) (d : int) (p : int) : unit =
 (*
 
 	Reconnaître des inclusions de langages se fait assez facilement via des intersections. En notant U = L(A) et V = L(B),
-	nous avons U \subset V \iff (U \cap V) = U \iff (A \times B) \sim A
+	nous avons U \subset V \iff (U \cap V^c) = 0
 
 
 *)
