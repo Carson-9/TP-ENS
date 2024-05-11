@@ -10,7 +10,7 @@ Les corrections proposées ont été réalisées en OCaml. chaque sujet demandan
 
 
 ## État des TP : 
-  - Automates Bisimilarités : Partie 1 Terminée <En cours de Complétion>
+  - Automates Bisimilarités : ✅ (Moins la déterminisation + émondage)
   - Buzy Beavers (Castors Affairés) : A Finir
   - Compression [0, 1[ : Parties 1 et 2 Terminées, A Finir
   - Musique en Braille : Parties 1, 2 et 3 Terminées, A Finir
