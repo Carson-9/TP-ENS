@@ -356,8 +356,8 @@ let q_6 (n : int) (m : int) (k : int) : unit =
 
 
 
-
 type tape_configuration_t = (state_t * bit_t)
+type tape_block_previous_config_t = tape_configuration_t list
 
 let tape_configuration_identity (c : tape_configuration_t) : tape_configuration_t = c
 let tape_configuration_get_state (c : tape_configuration_t) : state_t =  match c with
@@ -365,27 +365,73 @@ let tape_configuration_get_state (c : tape_configuration_t) : state_t =  match c
 let tape_configuration_get_bit (c : tape_configuration_t) : state_t =  match c with
 	|(s, b) -> b
 
-type tape_block_previous_config_t = tape_configuration_t list
+let tape_configuration_is_equal (ca : tape_configuration_t) (cb : tape_configuration_t) : bool =
+	match (ca, cb) with |((sa, ba), (sb, bb)) -> (sa = sb) && (ba = bb)
 
-let turing_machine_detect_cycle (t : turing_machine_t) (k : time_t) : (turing_machine_t * bool) =
-	let tape_prev_config_arr = Array.make (max_tape_size) [] in
 
-	let rec insert_config_find_loop new_conf tape_prev_conf = match tape_prev_conf with	
-		|[] -> tape_prev_config_arr[new_conf]
-		|h::t ->
+let rec insert_in_list_without_double (l : 'a list) (e : 'a) (equals : 'a -> 'a -> bool) : ('a list * bool) = match l with
+	|[] -> ([e], true)
+	|h::t -> if(equals e h) then (t, false) else begin
+		let new_list, did_insert = insert_in_list_without_double t e equals in (h::new_list, did_insert)
+	end
 
-	let rec loop_exec current_machine current_time = 
-		if(current_time >= max_time) then current_machine
+let array_are_equal_offset (a : 'a array) (b : 'a array) (offset : int)
+
+let turing_machine_run_detect_cycle (t : turing_machine_t) (max_time : time_t) : (turing_machine_t * bool) =
+
+	(* Doit vérifier que les tapes sont égales! *)
+
+	let rec loop_exec current_machine current_time has_cycle tape_previous_config = 
+		if(current_time >= max_time) then (current_machine, has_cycle)
 		else try 
-			loop_exec (turing_machine_emulate current_machine) (current_time + 1)
+			let current_tape_state = turing_machine_get_tape_state current_machine in
+			let current_state = tape_state_get_state current_tape_state in
+			let current_pos = tape_state_get_position current_tape_state in
+			let current_bit = tape_read (tape_state_get_tape current_tape_state) current_pos in
+			let inserted_list, did_insert = insert_in_list_without_double (tape_previous_config) (current_state, current_bit) (tape_configuration_is_equal) in
+			
+			begin
+			if(not did_insert) then loop_exec (turing_machine_emulate current_machine) (current_time + 1) true inserted_list
+		else loop_exec (turing_machine_emulate current_machine) (current_time + 1) has_cycle inserted_list
+	end
+
 		with |Final_State(machine, time) -> raise (Final_State(machine, (time + 1)))
 			|Tape_OOB(pos) -> raise (Tape_OOB(pos))
-			|_ -> failwith "turing_machine_run -> Unknown error!"
+			|e -> raise e
 
-	in loop_exec t 0
+	in loop_exec t 0 false []
 
 
-(* Main *)
+
+
+let q_7 (n : int) (m : int) (k : int) : unit = 
+
+	let rec count_t_couple t = 
+		if(t >= m) then (0, 0) else begin
+
+			let prev_f, prev_b = count_t_couple (t+1) in
+			try 
+				let res_machine, cycle_val = turing_machine_run_detect_cycle (turing_machine_gen_random n t) k in
+				if(cycle_val) then (prev_f, prev_b + 1) else (prev_f, prev_b)
+
+			with
+				| Final_State(machine, time) -> (prev_f + 1, prev_b)
+				| Tape_OOB(pos) -> failwith "Tape Out Of Bounds!"
+				| Invalid_State(e) -> failwith "Invalid State called!"
+				| unknown_except -> raise unknown_except
+		end
+
+	in let f, b = count_t_couple 0 in 
+	Printf.printf "   * Question 7 : Pour n = %d, M = %d, K = %d, nous obtenons f = %d, b = %d, i = %d\n"
+	n m k f b (m - f - b)
+
+
+
+
+
+
+
+	(* Main *)
 
 let _ =
   u_tab.(0) <- u_0;
@@ -402,3 +448,5 @@ let _ =
 	(* q_5_b 4 1000; q_5_b 8 10000; q_5_b 32 100000; *) (* OK *)
 
 	(* q_6 2 1000 20; q_6 3 5000 50; q_6 4 10000 200; *) (* OK *)
+
+	q_7 2 1000 20; q_7 3 5000 50; q_7 4 10000 200;	(* TO FIX : Ne vérifie pas que les tapes sont égales*)
